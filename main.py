@@ -1,51 +1,68 @@
 import requests
 import json
 from queue import Queue
+from fake_useragent import UserAgent
+from time import sleep
+import simplejson
 
 # 定义请求头
 headers = {
-    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36",
+    "user-agent": UserAgent().random,
+    "referer": "https://magiceden.io/",
+    "accept-language": "zh,en-US;q=0.9,en;q=0.8",
+    "accept": "application/json, text/plain, */*"
 }
+session = requests.Session()
 
 
 # 获取所有的collections
 def get_collections(que: Queue):
     url = "https://api-mainnet.magiceden.io/all_collections"
-    response = requests.get(url=url, headers=headers)
+    response = session.get(url=url, headers=headers)
+    print(response.text)
     data = response.json()["collections"]
     if data:
         # 添加到队列当中
+        print(len(data))
         for d in data:
             que.put((d["symbol"], d["name"], d["description"]))
 
 
 # 查询详细信息
-def query_detail(collection: tuple, data_list: list):
+def query_detail(que: Queue, collection: tuple, data_list: list):
     url = "https://api-mainnet.magiceden.io/rpc/getListedNFTsByQuery"
     query = {"$match": {"collectionSymbol": collection[0]}, "$sort": {"createdAt": -1}, "$skip": 0, "$limit": 1000}
     params = [
         ("q", json.dumps(query))
     ]
-    # print(params)
-    response = requests.get(url=url, headers=headers, params=params)
-    # print(response.text)
-    data = response.json()["results"]
-    # listings
-    listings = []
-    result = dict()
-    for d in data:
-        data_dic = dict()
-        data_dic["title"] = d["title"]
-        data_dic["currentPrice"] = d["price"]
-        data_dic["img"] = d["img"]
-        listings.append(data_dic)
-    # 组装成 {"collection": collection, "description": description, "listings": listings}格式
-    result["collection"] = collection[1]
-    result["description"] = collection[-1]
-    result["listings"] = listings
-    print(listings)
-    # 保存结果
-    data_list.append(result)
+    try:
+        # print(params)
+        response = session.get(url=url, headers=headers, params=params)
+        # print(response.request.headers)
+        print(response.text)
+        data = response.json()["results"]
+        # listings
+        listings = []
+        result = dict()
+        for d in data:
+            data_dic = dict()
+            data_dic["title"] = d["title"]
+            data_dic["currentPrice"] = d["price"]
+            data_dic["img"] = d["img"]
+            data_dic["escrowPubkey"] = d["escrowPubkey"]
+            data_dic["mintAddress"] = d["mintAddress"]
+            data_dic["owner"] = d["owner"]
+            listings.append(data_dic)
+        # 组装成 {"collection": collection, "description": description, "listings": listings}格式
+        result["collection"] = collection[1]
+        result["description"] = collection[-1]
+        result["listings"] = listings
+        # print(listings)
+        # 保存结果
+        data_list.append(result)
+    except simplejson.errors.JSONDecodeError:
+        print('解析json数据错误...重新加入队列')
+        que.put(collection)
 
 
 def main():
@@ -58,9 +75,10 @@ def main():
     while not que.empty():
         # 获取队列元素
         element = que.get()
-        query_detail(element, data_list)
+        query_detail(que, element, data_list)
+        sleep(3)
     # 写入文件
-    print(data_list)
+    # print(data_list)
     with open('./result.json', 'w', encoding='utf_8_sig') as wf:
         json.dump(data_list, wf)
 
