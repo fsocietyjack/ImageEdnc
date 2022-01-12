@@ -49,8 +49,14 @@ def query_detail(que: Queue, collection: tuple, data_list: list):
         result = dict()
         for d in data:
             data_dic = dict()
-            data_dic["title"] = d["title"]
-            data_dic["currentPrice"] = d["price"]
+            try:
+                data_dic["title"] = d["title"]
+            except KeyError :
+                data_dic["title"] = ""
+            try:
+                data_dic["currentPrice"] = d["price"]
+            except KeyError:
+                data_dic["currentPrice"] = ""
             try:
                 data_dic["img"] = d["img"]
             except KeyError:
